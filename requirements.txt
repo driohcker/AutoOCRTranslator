@@ -1,0 +1,25 @@
+# 基础
+PyYAML>=6.0.2
+Pillow>=10.0.0
+numpy>=1.26.0
+
+# 窗口捕获与系统交互
+mss>=9.0.0
+pywin32>=306
+
+# GUI 与覆盖层
+PyQt6>=6.6.0
+
+# OCR
+paddlepaddle>=3.0.0  # CPU 版，有 NVIDIA GPU 时可替换为 paddlepaddle-gpu
+paddleocr>=3.0.0
+rapidocr-onnxruntime>=1.2.0  # 更快的 CPU OCR 引擎，默认使用
+
+# 翻译 API 支持
+requests>=2.31.0
+
+# 测试
+pytest>=8.0.0
+
+# 打包
+# pyinstaller>=6.0.0
