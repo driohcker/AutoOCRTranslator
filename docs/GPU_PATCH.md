@@ -2,55 +2,59 @@
 
 基础版（`AutoOCRTranslator.7z`）默认内置 **RapidOCR（ONNXRuntime CPU）**，体积小巧、解压即用，适合大多数 CPU 场景。
 
-如果你需要启用 GPU 加速，请按本说明安装对应补丁。
+如果你需要启用 GPU 加速，请按本说明操作。
 
 ## 前置条件
 
 - NVIDIA 独立显卡，驱动已正确安装。
 - 已解压基础版 `AutoOCRTranslator.7z` 到任意目录。
-- 本机已安装 **Python 3.13** 并已加入系统 PATH（基础包不含 Python 解释器）。
-- 网络畅通（补丁包由 pip 在线下载安装）。
+- 网络畅通（补丁包由安装器在线下载安装）。
 
-## 推荐方案：RapidOCR GPU 补丁（体积小）
+## 推荐方案：在软件内一键安装
 
-RapidOCR 使用 ONNXRuntime 作为推理后端。将其切换为 `onnxruntime-gpu` 即可利用 NVIDIA GPU 加速。
+1. 启动 `AutoOCRTranslator.exe`。
+2. 打开「设置 → OCR」。
+3. 选择你想要的 OCR 引擎：
+   - **RapidOCR**（推荐，补丁约 280MB）
+   - **PaddleOCR**（补丁约 1GB+）
+4. 若 GPU 补丁未安装，「启用 GPU 加速 OCR」复选框会显示为禁用状态，旁边会出现 **「安装 GPU 补丁」** 按钮。
+5. 点击按钮：
+   - **RapidOCR**：程序会内置下载器从清华镜像下载 `onnxruntime-gpu` 补丁并自动解压到 `_internal`。下载进度会实时显示在按钮左侧。
+   - **PaddleOCR**：需要先下载 `upgrade_to_gpu.7z` 并解压到 `AutoOCRTranslator\` 目录，然后点击按钮运行 `upgrade_to_gpu.exe --engine paddle`。安装过程会调用你系统中的 Python/pip。
+6. 安装成功后，**重新启动 AutoOCRTranslator**。
+7. 再次打开设置，勾选「启用 GPU 加速 OCR (实验性)」，保存即可。
 
-1. 进入解压后的 `AutoOCRTranslator` 文件夹。
-2. 双击运行根目录下的 **`upgrade_to_gpu.py`**。
-3. 脚本会自动：
-   - 卸载 CPU 版 `onnxruntime`；
-   - 安装 `onnxruntime-gpu==1.20.1`（目标 CUDA 12.6 + cuDNN 9.x）；
-   - 验证 `CUDAExecutionProvider` 可用。
-4. 安装完成后，重新启动 `AutoOCRTranslator.exe`。
-5. 在「设置 → OCR」中勾选 **「启用 GPU 加速 OCR（实验性）」**，保存设置后翻译循环会自动重启。
+## 备用方案：手动运行安装器
 
-> 命令行高级用法：默认安装 RapidOCR GPU 补丁，如需安装 PaddleOCR GPU 补丁可执行
-> `upgrade_to_gpu.py --engine paddle`。
+### RapidOCR GPU 补丁
 
-## 可选方案：PaddleOCR GPU 补丁（体积大）
-
-如果你更偏好 PaddleOCR 引擎，可安装 `paddlepaddle-gpu`：
+软件内已内置 RapidOCR GPU 补丁下载器，推荐直接在软件内安装。若软件内安装失败，可下载 `upgrade_to_gpu.7z` 并解压到 `AutoOCRTranslator\` 目录后运行：
 
 ```
-upgrade_to_gpu.py --engine paddle
+AutoOCRTranslator\upgrade_to_gpu.exe --engine rapid
 ```
 
-此补丁约 1GB+，下载和安装时间较长。
+### PaddleOCR GPU 补丁
+
+PaddleOCR GPU 补丁体积过大，因此作为独立附件 `upgrade_to_gpu.7z` 提供：
+
+1. 下载 `upgrade_to_gpu.7z` 并解压到 `AutoOCRTranslator\` 目录。
+2. 运行：
+
+```
+AutoOCRTranslator\upgrade_to_gpu.exe --engine paddle
+```
 
 ## 常见问题
 
 **Q: 为什么基础包不带 GPU？**
-A: GPU 推理库体积较大（onnxruntime-gpu 约 200MB，paddlepaddle-gpu 约 1GB+）。基础包默认使用 RapidOCR CPU，已经能满足大多数实时翻译需求；GPU 作为可选补丁按需安装。
+A: GPU 推理库体积较大（onnxruntime-gpu 约 280MB，paddlepaddle-gpu 约 1GB+）。基础包默认使用 RapidOCR CPU，已经能满足大多数实时翻译需求；GPU 作为可选补丁按需安装。
 
 **Q: 安装 RapidOCR GPU 补丁后还能切换回 CPU 吗？**
-A: 可以。重新运行 `upgrade_to_gpu.py` 前，在设置里取消勾选 GPU 加速即可；如需彻底换回 CPU 版，可在命令行执行：
-```
-_internal\python.exe -m pip uninstall -y onnxruntime-gpu
-_internal\python.exe -m pip install onnxruntime==1.27.0
-```
+A: 可以。在设置里取消勾选 GPU 加速即可；如需彻底卸载 GPU 补丁，可删除 `AutoOCRTranslator\_internal\` 下的 `onnxruntime` 和 `onnxruntime_gpu-*.dist-info`，然后重新解压基础包覆盖。
 
 **Q: 我没有 NVIDIA 显卡，能运行 GPU 补丁吗？**
-A: 不能。脚本最后的 GPU 验证会失败。
+A: 不能。安装器最后的 GPU 验证会失败。
 
-**Q: 补丁安装失败怎么办？**
-A: 检查网络连接、NVIDIA 驱动、CUDA/cuDNN 版本；也可在命令行中运行 `upgrade_to_gpu.py` 查看详细错误。
+**Q: 安装失败怎么办？**
+A: 检查网络连接、NVIDIA 驱动、CUDA/cuDNN 版本；也可手动运行 `upgrade_to_gpu.exe` 查看详细错误输出。RapidOCR 补丁安装失败时，还可尝试直接下载 [onnxruntime-gpu 1.20.1 (cp313-win_amd64)](https://pypi.tuna.tsinghua.edu.cn/packages/c7/87/1361640e9277622591926f84d10fcc289c20be03e1ff5480d66c3cd2402f/onnxruntime_gpu-1.20.1-cp313-cp313-win_amd64.whl) 并重命名为 `.zip` 解压到 `AutoOCRTranslator\_internal\`。

@@ -251,17 +251,17 @@ for img_plugin in ['qtiff.dll', 'qwebp.dll', 'qicns.dll', 'qpdf.dll',
 remove_path(internal / 'PyQt6' / 'Qt6' / 'bin' / 'Qt6Svg.dll')
 remove_path(imgformats / 'qsvg.dll')
 
-# Copy optional GPU upgrade helper to the distribution root so users can find it.
+# Copy GPU patch readme to the distribution root.
+# RapidOCR GPU 补丁由程序内置下载器安装；PaddleOCR GPU 补丁需要单独下载
+# upgrade_to_gpu.exe，作为 Release 附件提供，不放入主程序包。
 repo_root = Path(SPECPATH)
-for src_path, dst_name in [
-    (repo_root / 'scripts' / 'upgrade_to_gpu.py', 'upgrade_to_gpu.py'),
-    (repo_root / 'docs' / 'GPU_PATCH.md', 'GPU_PATCH_README.md'),
-]:
-    if src_path.exists():
-        try:
-            shutil.copy2(src_path, dist_root / dst_name)
-            print(f"[cleanup] copied: {dst_name}")
-        except Exception as exc:
-            print(f"[cleanup] failed to copy {dst_name}: {exc}")
+
+readme_src = repo_root / 'docs' / 'GPU_PATCH.md'
+if readme_src.exists():
+    try:
+        shutil.copy2(readme_src, dist_root / 'GPU_PATCH_README.md')
+        print("[cleanup] copied: GPU_PATCH_README.md")
+    except Exception as exc:
+        print(f"[cleanup] failed to copy GPU_PATCH_README.md: {exc}")
 
 print("[cleanup] post-build cleanup finished")

@@ -4,11 +4,11 @@
 """
 
 import logging
-from typing import List
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QProcess, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -30,6 +30,8 @@ from PyQt6.QtWidgets import (
 from src.config import config
 from src.gui.zone_selector import Zone, ZoneSelector
 from src.translate.translator import Translator
+from src.utils.gpu_patch import get_upgrade_exe_path, gpu_patch_available
+from src.utils.gpu_patch_installer import install_rapidocr_gpu_patch
 
 
 ROI_PRESET_LABELS = {
@@ -42,6 +44,34 @@ ROI_PRESET_LABELS = {
 ROI_LABEL_TO_PRESET = {v: k for k, v in ROI_PRESET_LABELS.items()}
 
 
+class RapidGpuInstallWorker(QThread):
+    """后台下载并安装 RapidOCR GPU 补丁."""
+
+    progress = pyqtSignal(int, int)  # bytes, total
+    finished = pyqtSignal(bool, str)  # success, message
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+
+    def run(self) -> None:
+        try:
+            success = install_rapidocr_gpu_patch(
+                progress_callback=lambda b, t: self.progress.emit(b, t)
+            )
+            if success:
+                self.finished.emit(
+                    True,
+                    "RapidOCR GPU 补丁安装成功，请重启程序以使用 GPU 加速。",
+                )
+            else:
+                self.finished.emit(
+                    False,
+                    "补丁文件未正确解压，请检查网络或手动安装。",
+                )
+        except Exception as exc:
+            self.finished.emit(False, f"安装失败: {exc}")
+
+
 class SettingsWindow(QDialog):
     """设置窗口."""
 
@@ -49,8 +79,11 @@ class SettingsWindow(QDialog):
         super().__init__(parent)
         self.setWindowTitle("AutoOCRTranslator 设置")
         self.resize(520, 620)
+        self._gpu_patch_process: Optional["QProcess"] = None
+        self._rapid_gpu_worker: Optional[RapidGpuInstallWorker] = None
         self._setup_ui()
         self._load_config()
+        self._refresh_gpu_status()
 
     def _setup_ui(self) -> None:
         """设置界面布局."""
@@ -134,7 +167,23 @@ class SettingsWindow(QDialog):
             "PaddleOCR 需要安装 paddlepaddle-gpu 补丁。开启后保存设置，"
             "翻译循环会自动重启。"
         )
+
+        # GPU 补丁状态与安装按钮
+        gpu_patch_layout = QHBoxLayout()
+        gpu_patch_layout.setSpacing(6)
+        self.gpu_patch_label = QLabel("正在检测 GPU 补丁...")
+        self.gpu_patch_label.setStyleSheet("color: gray;")
+        self.btn_install_gpu = QPushButton("安装 GPU 补丁")
+        self.btn_install_gpu.setToolTip(
+            "下载并安装对应 OCR 引擎的 GPU 加速补丁，安装完成后请重启程序。"
+        )
+        self.btn_install_gpu.clicked.connect(self._install_gpu_patch)
+        gpu_patch_layout.addWidget(self.gpu_patch_label)
+        gpu_patch_layout.addWidget(self.btn_install_gpu)
+        gpu_patch_layout.addStretch()
+
         ocr_layout.addRow(self.use_gpu)
+        ocr_layout.addRow(gpu_patch_layout)
 
         self.ocr_lang = QComboBox()
         self.ocr_lang.addItems(["japan", "ch", "ch_tra", "en"])
@@ -474,10 +523,143 @@ class SettingsWindow(QDialog):
         self._zones_widget.setVisible(is_zones)
 
     def _on_ocr_engine_changed(self, text: str = "") -> None:
-        """OCR 引擎变化时更新 GPU 选项提示（现在 RapidOCR 也支持 GPU）."""
-        # RapidOCR 与 PaddleOCR 都可以通过安装对应 GPU 补丁启用加速，
-        # 因此 GPU 复选框始终保持可用。
-        pass
+        """OCR 引擎变化时刷新 GPU 补丁状态."""
+        self._refresh_gpu_status()
+
+    def _refresh_gpu_status(self) -> None:
+        """检测当前引擎对应的 GPU 补丁，并更新 GPU 复选框/安装按钮状态."""
+        engine = self.ocr_engine.currentText()
+        available = gpu_patch_available(engine)
+
+        if available:
+            self.use_gpu.setEnabled(True)
+            self.gpu_patch_label.setText("GPU 补丁已安装")
+            self.gpu_patch_label.setStyleSheet("color: green;")
+            self.btn_install_gpu.setVisible(False)
+            return
+
+        self.use_gpu.setEnabled(False)
+        self.use_gpu.setChecked(False)
+        self.gpu_patch_label.setText(
+            f"{engine.upper()} GPU 补丁未安装，点击右侧按钮安装"
+        )
+        self.gpu_patch_label.setStyleSheet("color: red;")
+        self.btn_install_gpu.setVisible(True)
+
+        if engine == "rapid":
+            self.btn_install_gpu.setEnabled(True)
+            self.btn_install_gpu.setToolTip(
+                "在线下载并安装 RapidOCR 的 onnxruntime-gpu 补丁。"
+            )
+        else:
+            exe_path = get_upgrade_exe_path()
+            self.btn_install_gpu.setEnabled(exe_path is not None)
+            self.btn_install_gpu.setToolTip(
+                "运行 upgrade_to_gpu.exe 安装 PaddleOCR GPU 补丁。"
+                if exe_path
+                else "未找到 upgrade_to_gpu.exe，无法自动安装 Paddle GPU 补丁。"
+            )
+
+    def _install_gpu_patch(self) -> None:
+        """安装当前引擎对应的 GPU 补丁."""
+        engine = self.ocr_engine.currentText()
+
+        if engine == "rapid":
+            self._install_rapid_gpu_patch()
+        else:
+            self._install_paddle_gpu_patch()
+
+    def _install_rapid_gpu_patch(self) -> None:
+        """使用内置下载器安装 RapidOCR GPU 补丁."""
+        reply = QMessageBox.question(
+            self,
+            "安装 RapidOCR GPU 补丁",
+            "即将从清华镜像下载 onnxruntime-gpu 补丁（约 280MB）。\n"
+            "安装过程需要联网，可能需要几分钟，请耐心等待。\n\n"
+            "是否继续？",
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        self.btn_install_gpu.setEnabled(False)
+        self.use_gpu.setEnabled(False)
+        self.gpu_patch_label.setText("准备下载...")
+        self.gpu_patch_label.setStyleSheet("color: orange;")
+
+        self._rapid_gpu_worker = RapidGpuInstallWorker(self)
+        self._rapid_gpu_worker.progress.connect(self._on_rapid_gpu_progress)
+        self._rapid_gpu_worker.finished.connect(self._on_rapid_gpu_finished)
+        self._rapid_gpu_worker.start()
+
+    def _on_rapid_gpu_progress(self, downloaded: int, total: int) -> None:
+        """更新下载进度."""
+        if total > 0:
+            pct = int(downloaded * 100 / total)
+            mb = downloaded / (1024 * 1024)
+            total_mb = total / (1024 * 1024)
+            self.gpu_patch_label.setText(
+                f"正在下载: {pct}% ({mb:.1f}/{total_mb:.1f} MB)"
+            )
+        else:
+            self.gpu_patch_label.setText(f"已下载 {downloaded / (1024 * 1024):.1f} MB")
+
+    def _on_rapid_gpu_finished(self, success: bool, message: str) -> None:
+        """RapidOCR GPU 补丁安装完成后的处理."""
+        self._rapid_gpu_worker = None
+        self._refresh_gpu_status()
+        if success:
+            QMessageBox.information(self, "安装完成", message)
+        else:
+            QMessageBox.warning(self, "安装失败", message)
+
+    def _install_paddle_gpu_patch(self) -> None:
+        """启动 upgrade_to_gpu.exe 安装 PaddleOCR GPU 补丁."""
+        exe_path = get_upgrade_exe_path()
+        if not exe_path:
+            QMessageBox.warning(
+                self,
+                "无法安装",
+                "未找到升级器 upgrade_to_gpu.exe，无法自动安装 Paddle GPU 补丁。\n"
+                "请从 Release 页面下载 upgrade_to_gpu.7z 并解压到程序目录。",
+            )
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "安装 Paddle GPU 补丁",
+            "即将运行 upgrade_to_gpu.exe 安装 PaddleOCR GPU 补丁。\n"
+            "安装过程需要联网，可能需要几分钟，请耐心等待。\n\n"
+            "是否继续？",
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        self.btn_install_gpu.setEnabled(False)
+        self.gpu_patch_label.setText("正在安装 GPU 补丁，请勿关闭...")
+        self.gpu_patch_label.setStyleSheet("color: orange;")
+
+        self._gpu_patch_process = QProcess(self)
+        self._gpu_patch_process.setProgram(str(exe_path))
+        self._gpu_patch_process.setArguments(["--engine", "paddle"])
+        self._gpu_patch_process.finished.connect(self._on_gpu_patch_finished)
+        self._gpu_patch_process.start()
+
+    def _on_gpu_patch_finished(self, exit_code: int, _exit_status: int) -> None:
+        """GPU 补丁安装完成后刷新状态并提示用户."""
+        self._refresh_gpu_status()
+        if exit_code == 0:
+            QMessageBox.information(
+                self,
+                "安装完成",
+                "GPU 补丁安装成功。\n请重新启动 AutoOCRTranslator 以使用 GPU 加速。",
+            )
+        else:
+            QMessageBox.warning(
+                self,
+                "安装失败",
+                "GPU 补丁安装失败或当前环境不支持 CUDA。\n"
+                "请检查 NVIDIA 驱动、CUDA/cuDNN 版本，或查看日志输出。",
+            )
 
     def _update_zones_label(self) -> None:
         """更新已划分区域数量显示."""
