@@ -414,6 +414,15 @@
     - 保留 PaddleOCR 作为可选引擎（`ocr.engine: paddle`），支持 GPU 加速。
     - 添加 GPU 可用性检测：配置使用 GPU 但环境不支持时自动回退 CPU 并记录警告。
     - 安装 `rapidocr-onnxruntime` 并更新 `requirements.txt`。
+  - **GPU 加速 OCR（实验性，已实现）**：
+    - 在 `config/settings.yaml` 中已有 `ocr.use_gpu` 配置项，默认 `false`。
+    - 在 `src/gui/settings_window.py` 的 OCR 设置组新增"启用 GPU 加速 OCR (实验性)"复选框：
+      - 仅当 OCR 引擎选择 `paddle` 时启用；切换为 `rapid` 时自动取消勾选并禁用。
+      - 保存后写入 `ocr.use_gpu`，并自动重新加载配置。
+    - 在 `src/app.py` 的 `_apply_config()` 中追踪最近一次 OCR 配置（引擎 / GPU），若发生变化且翻译循环正在运行，则自动停止并重新启动翻译循环，使新的 GPU 设置在子进程中生效。
+    - 安装 `paddlepaddle-gpu==3.3.1`（CUDA 12.6）并升级 `nvidia-cudnn-cu12` 到 `9.9.0.52` 以消除 CUDNN 版本警告。
+    - 新增 `tests/test_gpu_ocr.py` 对比测试：同一张 400×100 测试图片，CPU 平均约 1.0s，GPU 平均约 0.03s，加速比约 30 倍，且 CPU/GPU 识别结果一致。
+    - 新增 `requirements-gpu.txt`，记录 GPU 版依赖与安装命令。
   - **悬浮日志窗口**：
     - 新增 `src/gui/log_overlay_window.py`，实现 `LogOverlayWindow`。
     - 窗口特性：无边框、置顶、半透明背景、可拖动、可右下角调整大小、右键菜单（清空/置顶/关闭）。
@@ -493,11 +502,12 @@
 
 ## 当前状态
 
-- **当前步骤**：步骤 9 进行中（自定义区域划分功能已实现）
-- **下一步骤**：继续步骤 9 —— OCR 性能优化与翻译质量提升，或根据用户反馈优化区域选择器多显示器支持
+- **当前步骤**：步骤 9 进行中（GPU 加速 OCR 已实现并验证）
+- **下一步骤**：继续步骤 9 —— 进一步优化 OCR 性能与翻译质量，或根据用户反馈优化区域选择器多显示器支持
 - **已知问题/注意事项**：
   - 当前 Shell 中中文输出可能显示为乱码，系控制台编码问题，不影响程序逻辑。
   - PaddleOCR 较重，将在步骤 3 单独安装，未包含在基础依赖中。
+  - GPU 加速为实验性功能，默认关闭；启用需安装 `paddlepaddle-gpu` 并选择 PaddleOCR 引擎。
 
 ---
 

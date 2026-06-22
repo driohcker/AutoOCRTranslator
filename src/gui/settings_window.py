@@ -123,7 +123,17 @@ class SettingsWindow(QDialog):
 
         self.ocr_engine = QComboBox()
         self.ocr_engine.addItems(["rapid", "paddle"])
+        self.ocr_engine.currentTextChanged.connect(
+            self._on_ocr_engine_changed
+        )
         ocr_layout.addRow("OCR 引擎:", self.ocr_engine)
+
+        self.use_gpu = QCheckBox("启用 GPU 加速 OCR (实验性)")
+        self.use_gpu.setToolTip(
+            "仅对 PaddleOCR 引擎有效。开启后需要重启翻译循环才能生效，"
+            "且要求本机已安装对应 CUDA 版本的 paddlepaddle-gpu。"
+        )
+        ocr_layout.addRow(self.use_gpu)
 
         self.ocr_lang = QComboBox()
         self.ocr_lang.addItems(["japan", "ch", "ch_tra", "en"])
@@ -287,6 +297,7 @@ class SettingsWindow(QDialog):
         )
 
         self.ocr_engine.setCurrentText(config.get("ocr.engine", "rapid"))
+        self.use_gpu.setChecked(config.get("ocr.use_gpu", False))
         self.ocr_lang.setCurrentText(config.get("ocr.lang", "japan"))
         self.drop_score.setValue(config.get("ocr.drop_score", 0.7))
         self.ocr_max_width.setValue(config.get("ocr.max_width", 480))
@@ -404,6 +415,7 @@ class SettingsWindow(QDialog):
         )
 
         config.set("ocr.engine", self.ocr_engine.currentText())
+        config.set("ocr.use_gpu", self.use_gpu.isChecked())
         config.set("ocr.lang", self.ocr_lang.currentText())
         config.set("ocr.drop_score", self.drop_score.value())
         config.set("ocr.max_width", self.ocr_max_width.value())
@@ -459,6 +471,13 @@ class SettingsWindow(QDialog):
         self._roi_spin_label.setEnabled(is_custom)
 
         self._zones_widget.setVisible(is_zones)
+
+    def _on_ocr_engine_changed(self, text: str = "") -> None:
+        """OCR 引擎变化时启用/禁用 GPU 选项."""
+        is_paddle = self.ocr_engine.currentText() == "paddle"
+        self.use_gpu.setEnabled(is_paddle)
+        if not is_paddle:
+            self.use_gpu.setChecked(False)
 
     def _update_zones_label(self) -> None:
         """更新已划分区域数量显示."""

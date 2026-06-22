@@ -1,0 +1,37 @@
+# GPU 版依赖（实验性）
+# 使用前请先卸载 CPU 版 paddlepaddle：
+#   python -m pip uninstall -y paddlepaddle
+# 然后安装 GPU 版（请根据本机 CUDA 版本选择对应索引）：
+#   CUDA 11.8: python -m pip install paddlepaddle-gpu==3.3.1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
+#   CUDA 12.6: python -m pip install paddlepaddle-gpu==3.3.1 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
+#   CUDA 12.9: python -m pip install paddlepaddle-gpu==3.3.1 -i https://www.paddlepaddle.org.cn/packages/stable/cu129/
+#   CUDA 13.0: python -m pip install paddlepaddle-gpu==3.3.1 -i https://www.paddlepaddle.org.cn/packages/stable/cu130/
+# 安装完成后，可通过以下命令验证 GPU 是否可用：
+#   python -c "import paddle; print(paddle.is_compiled_with_cuda()); print(paddle.get_device())"
+# 若运行时出现 CUDNN 版本警告，可尝试安装更高版本的 nvidia-cudnn-cu12，但可能引发 pip 依赖冲突提示。
+
+# 基础
+PyYAML>=6.0.2
+Pillow>=10.0.0
+numpy>=1.26.0
+
+# 窗口捕获与系统交互
+mss>=9.0.0
+pywin32>=306
+
+# GUI 与覆盖层
+PyQt6>=6.6.0
+
+# OCR（GPU 版）
+paddlepaddle-gpu==3.3.1  # 需根据本机 CUDA 版本选择 cu118/cu126/cu129/cu130
+paddleocr>=3.0.0
+rapidocr-onnxruntime>=1.2.0  # 更快的 CPU OCR 引擎，默认使用
+
+# 翻译 API 支持
+requests>=2.31.0
+
+# 测试
+pytest>=8.0.0
+
+# 打包
+# pyinstaller>=6.0.0

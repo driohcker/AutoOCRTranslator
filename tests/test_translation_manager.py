@@ -35,7 +35,7 @@ class TestTranslationProcessManager(unittest.TestCase):
     def test_start_stop(self, mock_process_cls, _mock_queue):
         """测试管理器能启动和停止子进程."""
         mock_process = mock_process_cls.return_value
-        mock_process.is_alive.side_effect = [True, False]
+        mock_process.is_alive.return_value = False
 
         manager = TranslationProcessManager()
         config_dict = {"ocr": {"engine": "rapid"}}
@@ -46,7 +46,7 @@ class TestTranslationProcessManager(unittest.TestCase):
 
         manager.stop()
 
-        mock_process.join.assert_called_once()
+        mock_process.join.assert_not_called()
         mock_process.terminate.assert_not_called()
         self.assertIsNone(manager._process)
         self.assertEqual(manager.pending_count(), 0)

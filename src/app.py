@@ -57,6 +57,9 @@ class App:
         self._target_title = ""
         self._skipped_frames = 0
 
+        # 用于检测 OCR 相关配置变化后是否需要重启子进程
+        self._last_ocr_config: Dict[str, Any] = {}
+
         # 系统托盘菜单（托盘图标在 run() 中创建）
         self.tray_menu = QMenu()
         self.action_show = QAction("显示主窗口")
@@ -173,6 +176,10 @@ class App:
         # 启动翻译子进程
         config_dict: Dict[str, Any] = config.raw
         self.translation_manager.start(config_dict)
+        self._last_ocr_config = {
+            "engine": config_dict.get("ocr", {}).get("engine", "rapid"),
+            "use_gpu": config_dict.get("ocr", {}).get("use_gpu", False),
+        }
 
         # 启动截图线程
         self.capture_thread = CaptureThread(
@@ -369,6 +376,20 @@ class App:
                 logger.info(f"截图间隔已更新为 {interval}ms")
 
             self.overlay.set_zones(config.get("ocr.roi_zones", []) or [])
+
+            # 如果 OCR 引擎或 GPU 设置变化且正在运行，自动重启子进程
+            new_ocr_config = {
+                "engine": config.get("ocr.engine", "rapid"),
+                "use_gpu": config.get("ocr.use_gpu", False),
+            }
+            if self._last_ocr_config and new_ocr_config != self._last_ocr_config:
+                self._last_ocr_config = new_ocr_config
+                if self.is_running:
+                    logger.info(
+                        "OCR 引擎或 GPU 设置发生变化，正在重启翻译循环..."
+                    )
+                    self.stop()
+                    self.start()
         except Exception as e:
             logger.exception("应用配置失败")
             QMessageBox.warning(None, "配置应用失败", f"应用配置时出错:\n{e}")

@@ -110,7 +110,7 @@ python run.py
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
 | `app.name` | 应用名称 | `AutoOCRTranslator` |
-| `app.version` | 应用版本 | `0.0.1` |
+| `app.version` | 应用版本 | `0.0.2` |
 | `capture.interval_ms` | 截图间隔（毫秒） | `3000` |
 | `capture.target_window_title` | 目标窗口标题（可选） | `''` |
 | `ocr.engine` | OCR 引擎：`paddle` / `rapid` | `paddle` |
@@ -232,6 +232,16 @@ python -m pytest tests/ -v
 ---
 
 ## 📝 更新日志
+
+### v0.0.2
+
+- **实验性功能**：支持 GPU 加速 OCR。
+  - 在设置界面新增「启用 GPU 加速 OCR (实验性)」开关，默认关闭。
+  - 仅对 PaddleOCR 引擎有效；环境不支持时自动回退 CPU。
+  - 保存 GPU 设置后，若翻译循环正在运行会自动重启以生效。
+- 新增 `requirements-gpu.txt`，记录 GPU 版依赖安装方式。
+- 新增 `tests/test_gpu_ocr.py`，验证 CPU/GPU OCR 识别结果一致性与加速比。
+- 修复 `ResultReader` 线程在停止时可能阻塞的问题。
 
 ### v0.0.1
 

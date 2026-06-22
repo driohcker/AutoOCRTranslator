@@ -48,6 +48,11 @@ class ResultReader(QThread):
     def stop(self) -> None:
         """请求读取线程退出."""
         self._running = False
+        try:
+            # 放入哨兵值唤醒阻塞在 get() 上的线程，使其立即退出
+            self._output_queue.put(None, timeout=0.5)
+        except Exception:
+            pass
 
 
 class TranslationProcessManager(QObject):

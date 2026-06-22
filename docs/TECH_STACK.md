@@ -70,6 +70,13 @@
 - 解决方案：在导入 `paddleocr` 前设置环境变量 `FLAGS_use_mkldnn=0`。
 - 该处理已封装在 `src/ocr/paddle_ocr.py` 中，对其他模块透明。
 
+**GPU 加速（实验性）**：
+- PaddleOCR 支持通过 `paddlepaddle-gpu` 在 NVIDIA GPU 上推理，可显著降低单帧 OCR 耗时。
+- 默认关闭（`ocr.use_gpu: false`），用户需在设置界面手动开启；仅当 OCR 引擎为 `paddle` 时生效。
+- 若配置使用 GPU 但环境不支持（未安装 GPU 版 Paddle 或无 CUDA），系统会自动回退到 CPU 并记录警告。
+- 启用步骤：卸载 CPU 版 `paddlepaddle`，按本机 CUDA 版本安装对应 `paddlepaddle-gpu`，然后在设置中勾选"启用 GPU 加速 OCR (实验性)"。
+- 实测：在 NVIDIA GeForce RTX 3050（CUDA 12.6）上，同一张 400×100 测试图片的 PaddleOCR 识别耗时从约 1.0s（CPU）降至约 0.03s（GPU），加速比约 30 倍。
+
 **替代方案**：
 - Tesseract：轻量，但对日文竖排、艺术字效果较差。
 - EasyOCR：对多语言支持好，但模型较大，首次加载慢。
@@ -139,10 +146,12 @@
 
 | 包名 | 作用 |
 |------|------|
-| paddlepaddle | PaddleOCR 深度学习框架（CPU 版） |
+| paddlepaddle | PaddleOCR 深度学习框架（CPU 版，默认） |
 | paddleocr | OCR 识别库 |
+| rapidocr-onnxruntime | 基于 ONNXRuntime 的轻量 OCR 引擎，CPU 默认 |
 
-> 若用户有 NVIDIA GPU，可替换为 `paddlepaddle-gpu` 以加速推理。
+> 若用户有 NVIDIA GPU，可卸载 `paddlepaddle` 并安装 `paddlepaddle-gpu` 以启用 GPU 加速推理。
+> 具体命令参考 `requirements-gpu.txt`。
 
 ### 3.3 打包依赖（后续安装）
 
@@ -194,7 +203,7 @@ pyinstaller AutoOCRTranslator.spec
 
 ## 6. 扩展方向
 
-- 支持 GPU 加速 OCR。
+- ✅ 支持 GPU 加速 OCR（已实现，实验性，默认关闭）。
 - 支持更多翻译引擎（DeepL、OpenAI、本地模型等）。
 - 支持文本区域手动框选/屏蔽。
 - 支持语音朗读原文/译文。
