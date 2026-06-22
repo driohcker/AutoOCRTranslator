@@ -24,7 +24,7 @@ DIST_DIR = REPO_ROOT / "dist"
 BUILD_DIR = REPO_ROOT / "build"
 SPEC_FILE = REPO_ROOT / "AutoOCRTranslator.spec"
 UPX_DIR = REPO_ROOT / "tools" / "upx-4.2.4-win64"
-BANDIZIP = Path(r"D:\Bandizip\bandizip.exe")
+BANDIZIP = Path(r"D:\Bandizip\bz.exe")
 
 
 def run(cmd: list[str | Path], **kwargs) -> int:
