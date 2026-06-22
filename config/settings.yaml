@@ -1,6 +1,6 @@
 app:
   name: AutoOCRTranslator
-  version: 0.0.2
+  version: 0.0.3
 capture:
   interval_ms: 3000
   target_window_title: ''

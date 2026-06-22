@@ -112,7 +112,7 @@ python run.py
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
 | `app.name` | 应用名称 | `AutoOCRTranslator` |
-| `app.version` | 应用版本 | `0.0.2` |
+| `app.version` | 应用版本 | `0.0.3` |
 | `capture.interval_ms` | 截图间隔（毫秒） | `3000` |
 | `capture.target_window_title` | 目标窗口标题（可选） | `''` |
 | `ocr.engine` | OCR 引擎：`rapid` / `paddle` | `rapid` |
@@ -271,6 +271,14 @@ AutoOCRTranslator\upgrade_to_gpu.py
 ---
 
 ## 📝 更新日志
+
+### v0.0.3
+
+- **单包发行**：`AutoOCRTranslator.7z` 同时包含主程序与 `upgrade_to_gpu.exe` GPU 补丁安装器，用户只需下载一个包。
+- **软件内一键安装 RapidOCR GPU 补丁**：设置界面选择 RapidOCR 引擎时，可直接点击按钮在线下载 `onnxruntime-gpu` 补丁，进度实时显示。
+- **设置界面支持 PaddleOCR GPU 补丁安装**：选择 PaddleOCR 引擎时，调用包内 `upgrade_to_gpu.exe --engine paddle` 完成安装。
+- **GPU 补丁检测优化**：打包后的程序通过关键文件存在性判断补丁是否已安装，无需依赖系统 Python。
+- **构建脚本修复**：Bandizip 压缩改用命令行工具 `bz.exe`，避免 GUI 进程阻塞。
 
 ### v0.0.2
 
