@@ -20,26 +20,19 @@
 4. 若 GPU 补丁未安装，「启用 GPU 加速 OCR」复选框会显示为禁用状态，旁边会出现 **「安装 GPU 补丁」** 按钮。
 5. 点击按钮：
    - **RapidOCR**：程序会内置下载器从清华镜像下载 `onnxruntime-gpu` 补丁并自动解压到 `_internal`。下载进度会实时显示在按钮左侧。
-   - **PaddleOCR**：需要先下载 `upgrade_to_gpu.7z` 并解压到 `AutoOCRTranslator\` 目录，然后点击按钮运行 `upgrade_to_gpu.exe --engine paddle`。安装过程会调用你系统中的 Python/pip。
+   - **PaddleOCR**：程序会调用发行包内的 `upgrade_to_gpu.exe --engine paddle` 进行安装，过程需要调用你系统中的 Python/pip。
 6. 安装成功后，**重新启动 AutoOCRTranslator**。
 7. 再次打开设置，勾选「启用 GPU 加速 OCR (实验性)」，保存即可。
 
 ## 备用方案：手动运行安装器
 
-### RapidOCR GPU 补丁
-
-软件内已内置 RapidOCR GPU 补丁下载器，推荐直接在软件内安装。若软件内安装失败，可下载 `upgrade_to_gpu.7z` 并解压到 `AutoOCRTranslator\` 目录后运行：
+如果软件内安装失败，也可以直接运行发行包根目录下的 `upgrade_to_gpu.exe`：
 
 ```
 AutoOCRTranslator\upgrade_to_gpu.exe --engine rapid
 ```
 
-### PaddleOCR GPU 补丁
-
-PaddleOCR GPU 补丁体积过大，因此作为独立附件 `upgrade_to_gpu.7z` 提供：
-
-1. 下载 `upgrade_to_gpu.7z` 并解压到 `AutoOCRTranslator\` 目录。
-2. 运行：
+或安装 PaddleOCR GPU 补丁：
 
 ```
 AutoOCRTranslator\upgrade_to_gpu.exe --engine paddle

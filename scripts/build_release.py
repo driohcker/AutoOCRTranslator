@@ -103,44 +103,27 @@ def main() -> int:
     )
     print(f"\n基础包解压后体积: {total_size / 1024 / 1024:.1f} MB")
 
-    # 压缩基础发行包（不含 GPU 补丁安装器，以控制体积）
-    base_archive = REPO_ROOT / "AutoOCRTranslator.7z"
-    if BANDIZIP.exists():
-        if base_archive.exists():
-            base_archive.unlink()
-        rc = run([BANDIZIP, "c", "-fmt:7z", "-l:9", str(base_archive), str(output_dir)])
-        if rc == 0 and base_archive.exists():
-            print(
-                f"基础发行包: {base_archive} "
-                f"({base_archive.stat().st_size / 1024 / 1024:.1f} MB)"
-            )
-    else:
-        print("未找到 Bandizip，跳过基础包压缩。请手动压缩 dist/AutoOCRTranslator。")
-
-    # 单独构建 GPU 补丁安装器并打包为独立附件
+    # 构建 GPU 补丁安装器并放入基础包，保证用户只需下载一个包
     installer = build_gpu_patch_installer()
-    if installer and BANDIZIP.exists():
-        patch_archive = REPO_ROOT / "upgrade_to_gpu.7z"
-        if patch_archive.exists():
-            patch_archive.unlink()
-        # 临时目录用于打包，附带说明文档
-        patch_temp = DIST_DIR / "upgrade_to_gpu_pkg"
-        if patch_temp.exists():
-            shutil.rmtree(patch_temp, ignore_errors=True)
-        patch_temp.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(installer, patch_temp / "upgrade_to_gpu.exe")
-        readme = REPO_ROOT / "docs" / "GPU_PATCH.md"
-        if readme.exists():
-            shutil.copy2(readme, patch_temp / "GPU_PATCH_README.md")
-        rc = run(
-            [BANDIZIP, "c", "-fmt:7z", "-l:9", str(patch_archive), str(patch_temp)]
-        )
-        if rc == 0 and patch_archive.exists():
-            print(
-                f"GPU 补丁安装器包: {patch_archive} "
-                f"({patch_archive.stat().st_size / 1024 / 1024:.1f} MB)"
-            )
-        shutil.rmtree(patch_temp, ignore_errors=True)
+    if installer:
+        shutil.copy2(installer, output_dir / "upgrade_to_gpu.exe")
+        print(f"已复制 GPU 补丁安装器到 {output_dir / 'upgrade_to_gpu.exe'}")
+
+    total_size = sum(
+        f.stat().st_size for f in output_dir.rglob("*") if f.is_file()
+    )
+    print(f"含安装器后解压后体积: {total_size / 1024 / 1024:.1f} MB")
+
+    # 压缩为单一发行包
+    archive = REPO_ROOT / "AutoOCRTranslator.7z"
+    if BANDIZIP.exists():
+        if archive.exists():
+            archive.unlink()
+        rc = run([BANDIZIP, "c", "-fmt:7z", "-l:9", str(archive), str(output_dir)])
+        if rc == 0 and archive.exists():
+            print(f"发行包: {archive} ({archive.stat().st_size / 1024 / 1024:.1f} MB)")
+    else:
+        print("未找到 Bandizip，跳过压缩。请手动压缩 dist/AutoOCRTranslator。")
 
     return 0
 

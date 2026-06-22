@@ -251,10 +251,25 @@ for img_plugin in ['qtiff.dll', 'qwebp.dll', 'qicns.dll', 'qpdf.dll',
 remove_path(internal / 'PyQt6' / 'Qt6' / 'bin' / 'Qt6Svg.dll')
 remove_path(imgformats / 'qsvg.dll')
 
-# Copy GPU patch readme to the distribution root.
-# RapidOCR GPU 补丁由程序内置下载器安装；PaddleOCR GPU 补丁需要单独下载
-# upgrade_to_gpu.exe，作为 Release 附件提供，不放入主程序包。
+# Copy GPU patch helper to the distribution root.
+# RapidOCR GPU 补丁优先走程序内置下载器；PaddleOCR GPU 补丁仍需要此安装器。
+# 为让用户只需下载一个包，安装器被包含在基础发行包内。
 repo_root = Path(SPECPATH)
+installer_exe = repo_root / 'dist' / 'upgrade_to_gpu.exe'
+if installer_exe.exists():
+    try:
+        shutil.copy2(installer_exe, dist_root / 'upgrade_to_gpu.exe')
+        print("[cleanup] copied: upgrade_to_gpu.exe")
+    except Exception as exc:
+        print(f"[cleanup] failed to copy upgrade_to_gpu.exe: {exc}")
+else:
+    script_src = repo_root / 'scripts' / 'upgrade_to_gpu.py'
+    if script_src.exists():
+        try:
+            shutil.copy2(script_src, dist_root / 'upgrade_to_gpu.py')
+            print("[cleanup] copied: upgrade_to_gpu.py")
+        except Exception as exc:
+            print(f"[cleanup] failed to copy upgrade_to_gpu.py: {exc}")
 
 readme_src = repo_root / 'docs' / 'GPU_PATCH.md'
 if readme_src.exists():
