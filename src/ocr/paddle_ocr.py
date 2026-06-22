@@ -5,6 +5,7 @@
 环境变量 `FLAGS_use_mkldnn=0` 处理此问题。
 """
 
+import importlib
 import logging
 import os
 from typing import Any, Dict, List, Optional
@@ -14,8 +15,6 @@ from PIL import Image
 
 # 必须在导入 paddleocr 之前设置，禁用 oneDNN 以兼容 Python 3.13
 os.environ.setdefault("FLAGS_use_mkldnn", "0")
-
-from paddleocr import PaddleOCR  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +87,27 @@ class PaddleOCREngine:
         disable_textline_orient = kwargs.pop("use_textline_orientation", False)
         # min_height 是 RapidOCR 专属参数，PaddleOCR 不支持，弹出忽略
         kwargs.pop("min_height", None)
+
+        if use_gpu:
+            try:
+                paddle = importlib.import_module("paddle")
+                if not paddle.is_compiled_with_cuda():
+                    logger.warning(
+                        "配置使用 GPU，但当前 Paddle 未编译 CUDA，将回退到 CPU"
+                    )
+                    use_gpu = False
+            except Exception as e:
+                logger.warning(f"GPU 检测失败: {e}，将回退到 CPU")
+                use_gpu = False
+
+        try:
+            paddleocr_mod = importlib.import_module("paddleocr")
+            PaddleOCR = paddleocr_mod.PaddleOCR
+        except Exception as e:
+            raise RuntimeError(
+                "PaddleOCR 未安装。基础包默认使用 RapidOCR，"
+                "如需使用 PaddleOCR/GPU 加速，请运行 scripts/upgrade_to_gpu.py 安装补丁。"
+            ) from e
 
         self._ocr = PaddleOCR(
             lang=self.lang,

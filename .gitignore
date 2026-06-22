@@ -38,7 +38,11 @@ data/cache/*.db-journal
 
 # 打包输出
 output/
-*.spec
+*.7z
+/tools/
+
+# 保留项目 spec 文件（排除通用 *.spec 规则）
+!AutoOCRTranslator.spec
 
 # 测试产物
 tests/*.png

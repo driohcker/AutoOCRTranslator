@@ -130,8 +130,9 @@ class SettingsWindow(QDialog):
 
         self.use_gpu = QCheckBox("启用 GPU 加速 OCR (实验性)")
         self.use_gpu.setToolTip(
-            "仅对 PaddleOCR 引擎有效。开启后需要重启翻译循环才能生效，"
-            "且要求本机已安装对应 CUDA 版本的 paddlepaddle-gpu。"
+            "对 RapidOCR/PaddleOCR 均有效。RapidOCR 需要安装 onnxruntime-gpu 补丁；"
+            "PaddleOCR 需要安装 paddlepaddle-gpu 补丁。开启后保存设置，"
+            "翻译循环会自动重启。"
         )
         ocr_layout.addRow(self.use_gpu)
 
@@ -473,11 +474,10 @@ class SettingsWindow(QDialog):
         self._zones_widget.setVisible(is_zones)
 
     def _on_ocr_engine_changed(self, text: str = "") -> None:
-        """OCR 引擎变化时启用/禁用 GPU 选项."""
-        is_paddle = self.ocr_engine.currentText() == "paddle"
-        self.use_gpu.setEnabled(is_paddle)
-        if not is_paddle:
-            self.use_gpu.setChecked(False)
+        """OCR 引擎变化时更新 GPU 选项提示（现在 RapidOCR 也支持 GPU）."""
+        # RapidOCR 与 PaddleOCR 都可以通过安装对应 GPU 补丁启用加速，
+        # 因此 GPU 复选框始终保持可用。
+        pass
 
     def _update_zones_label(self) -> None:
         """更新已划分区域数量显示."""

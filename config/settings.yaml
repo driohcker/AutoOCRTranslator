@@ -5,7 +5,7 @@ capture:
   interval_ms: 3000
   target_window_title: ''
 ocr:
-  engine: paddle
+  engine: rapid
   lang: japan
   use_gpu: false
   det_db_thresh: 0.5

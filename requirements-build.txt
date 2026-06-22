@@ -1,0 +1,16 @@
+# 打包专用依赖（仅用于 .venv-build-cpu 这类干净打包环境）
+# 安装方式：
+#   python -m venv .venv-build-cpu
+#   .venv-build-cpu\Scripts\activate
+#   pip install -r requirements-build.txt
+
+-r requirements.txt
+
+# 打包工具
+pyinstaller>=6.21.0
+
+# 生产包使用 headless OpenCV，去掉视频/GUI 模块以减小体积
+opencv-python-headless>=4.13.0
+
+# 注：如果打包环境已经安装 opencv-python，请先卸载：
+#   pip uninstall opencv-python

@@ -5,13 +5,46 @@ RapidOCR 基于 ONNXRuntime，在 CPU 上通常比 PaddleOCR 更快，
 """
 
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+import yaml
 from PIL import Image
 from rapidocr_onnxruntime import RapidOCR
 
 logger = logging.getLogger(__name__)
+
+
+def _set_rapidocr_use_gpu(use_gpu: bool) -> None:
+    """修改 rapidocr_onnxruntime 的 config.yaml，控制是否启用 CUDA.
+
+    rapidocr_onnxruntime 1.2.x 通过三个子模块的 use_cuda 字段决定
+    ONNXRuntime ExecutionProvider。该库未暴露稳定的 Python API 来设置，
+    因此直接修改其自带的 config.yaml（每次初始化时按需写入）。
+    """
+    try:
+        import rapidocr_onnxruntime as _rapidocr_pkg
+    except Exception as exc:
+        logger.warning(f"无法定位 rapidocr_onnxruntime 配置: {exc}")
+        return
+
+    config_path = Path(_rapidocr_pkg.__file__).resolve().with_name("config.yaml")
+    if not config_path.exists():
+        logger.warning(f"找不到 rapidocr_onnxruntime 配置: {config_path}")
+        return
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+        for section in ("Det", "Cls", "Rec"):
+            if section in cfg:
+                cfg[section]["use_cuda"] = bool(use_gpu)
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(cfg, f, allow_unicode=True, sort_keys=False)
+        logger.debug(f"已将 {config_path} 的 use_cuda 设置为 {use_gpu}")
+    except Exception as exc:
+        logger.warning(f"修改 rapidocr_onnxruntime 配置失败: {exc}")
 
 OCRResult = Dict[str, Any]
 
@@ -42,6 +75,7 @@ class RapidOCREngine:
         lang: str = "japan",
         drop_score: float = 0.7,
         min_height: int = 20,
+        use_gpu: bool = False,
         **kwargs,
     ) -> None:
         """初始化 RapidOCR 引擎.
@@ -50,6 +84,7 @@ class RapidOCREngine:
             lang: OCR 语言，目前 RapidOCR 主要支持 ch/en/japan 等。
             drop_score: 低于此置信度的结果会被过滤。
             min_height: 允许识别的最小文本高度（像素），游戏字幕通常较小。
+            use_gpu: 是否尝试使用 GPU（需要安装 onnxruntime-gpu 补丁）。
             **kwargs: 传递给 RapidOCR 构造函数的参数。
         """
         self.lang = self._normalize_lang(lang)
@@ -57,8 +92,11 @@ class RapidOCREngine:
 
         logger.info(
             f"初始化 RapidOCR: lang={self.lang}, drop_score={drop_score}, "
-            f"min_height={min_height}"
+            f"min_height={min_height}, use_gpu={use_gpu}"
         )
+
+        # RapidOCR 通过 config.yaml 控制是否使用 CUDA ExecutionProvider
+        _set_rapidocr_use_gpu(use_gpu)
 
         # RapidOCR 构造函数支持的参数有限，透传已知常用参数
         self._ocr = RapidOCR(

@@ -39,23 +39,12 @@ def create_ocr_engine(
             lang=lang,
             drop_score=params.get("drop_score", 0.7),
             min_height=params.get("min_height", 20),
+            use_gpu=use_gpu,
         )
 
     from src.ocr.paddle_ocr import PaddleOCREngine
 
-    if use_gpu:
-        try:
-            import paddle
-
-            if not paddle.is_compiled_with_cuda():
-                logger.warning(
-                    "配置使用 GPU，但当前 Paddle 未编译 CUDA，将回退到 CPU"
-                )
-                use_gpu = False
-        except Exception as e:
-            logger.warning(f"GPU 检测失败: {e}，将回退到 CPU")
-            use_gpu = False
-
+    # GPU 可用性检测已移至 PaddleOCREngine 内部，避免顶层 import paddle
     logger.info(
         f"创建 PaddleOCR 引擎: lang={lang}, use_gpu={use_gpu}, "
         f"drop_score={params.get('drop_score', 0.7)}, "

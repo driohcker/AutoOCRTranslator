@@ -76,7 +76,9 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-> **注意**：PaddleOCR 首次运行会自动下载模型文件，可能需要几分钟并占用磁盘空间。
+> **注意**：
+> - 默认 OCR 引擎已改为 `rapid`（RapidOCR），模型随包内置，首次启动无需额外下载。
+> - 如需使用 PaddleOCR，请先在系统中安装 `paddlepaddle` + `paddleocr`，并在设置中切换引擎。
 
 ### 4. 运行程序
 
@@ -113,7 +115,7 @@ python run.py
 | `app.version` | 应用版本 | `0.0.2` |
 | `capture.interval_ms` | 截图间隔（毫秒） | `3000` |
 | `capture.target_window_title` | 目标窗口标题（可选） | `''` |
-| `ocr.engine` | OCR 引擎：`paddle` / `rapid` | `paddle` |
+| `ocr.engine` | OCR 引擎：`rapid` / `paddle` | `rapid` |
 | `ocr.lang` | OCR 语言：`japan` / `ch` / `ch_tra` / `en` | `japan` |
 | `ocr.use_gpu` | 是否使用 GPU | `false` |
 | `ocr.drop_score` | 置信度阈值，低于此值的文字会被丢弃 | `0.3` |
@@ -209,15 +211,52 @@ python -m pytest tests/ -v
 
 ---
 
+## 📦 打包与发布
+
+项目提供独立的 Windows 文件夹式发行包（onedir），解压即用，无需安装 Python。
+
+### 构建基础包
+
+```bash
+# 1. 创建并激活打包专用虚拟环境
+python -m venv .venv-build-cpu
+.venv-build-cpu\Scripts\activate
+pip install -r requirements-build.txt
+
+# 2. 确认 tools/upx-4.2.4-win64/upx.exe 存在（用于压缩二进制）
+#    如没有，可从 https://github.com/upx/upx/releases 下载并解压到 tools/
+
+# 3. 一键构建并压缩
+.venv-build-cpu\Scripts\python scripts\build_release.py
+```
+
+构建产物：
+- `dist/AutoOCRTranslator/`：解压后的运行目录（约 100 MB）。
+- `AutoOCRTranslator.7z`：压缩发行包（约 50 MB）。
+
+### 启用 GPU 加速
+
+基础包默认仅内置 RapidOCR CPU。如需 GPU 加速，解压后运行：
+
+```
+AutoOCRTranslator\upgrade_to_gpu.py
+```
+
+- 默认安装 **RapidOCR GPU 补丁**（`onnxruntime-gpu==1.20.1`，目标 CUDA 12.x + cuDNN 9.x）。
+- 也可选择安装 **PaddleOCR GPU 补丁**：
+  ```
+  AutoOCRTranslator\upgrade_to_gpu.py --engine paddle
+  ```
+
+详情请参考 [`docs/GPU_PATCH.md`](docs/GPU_PATCH.md)。
+
 ## ⚠️ 已知问题与性能提示
 
-- **OCR 性能**：当前使用 PaddleOCR CPU 版，对高分辨率全屏画面处理较慢（约数十秒/帧）。
+- **OCR 性能**：默认 RapidOCR CPU 引擎速度较快；若仍不够，可安装 GPU 补丁。
   - 建议将游戏/应用设为窗口化或较低分辨率。
   - 可通过 `ocr.roi_preset` 只翻译关注区域，显著提升速度。
-  - 也可切换到 `rapid` 引擎以获得更快的 CPU 推理速度。
 - **翻译质量**：默认使用 Google Translate 免费接口，可能存在不稳定或翻译不准确的情况。
   - 如需稳定高质量翻译，请在设置中配置 DeepL、腾讯云、阿里云等商业 API（需自行申请 Key）。
-- **首次启动**：PaddleOCR 首次运行会自动下载模型文件，可能需要几分钟并占用磁盘空间。
 - **高 DPI 显示**：部分窗口坐标在高 DPI 环境下可能存在偏差，可尝试调整显示缩放设置。
 
 ---
@@ -235,12 +274,13 @@ python -m pytest tests/ -v
 
 ### v0.0.2
 
-- **实验性功能**：支持 GPU 加速 OCR。
-  - 在设置界面新增「启用 GPU 加速 OCR (实验性)」开关，默认关闭。
-  - 仅对 PaddleOCR 引擎有效；环境不支持时自动回退 CPU。
-  - 保存 GPU 设置后，若翻译循环正在运行会自动重启以生效。
-- 新增 `requirements-gpu.txt`，记录 GPU 版依赖安装方式。
-- 新增 `tests/test_gpu_ocr.py`，验证 CPU/GPU OCR 识别结果一致性与加速比。
+- **基础包体积大幅瘦身**：默认仅打包 RapidOCR CPU，解压后约 100 MB，7z 压缩包约 50 MB。
+- **GPU 支持改为可选补丁**：
+  - 提供 `scripts/upgrade_to_gpu.py`，支持 RapidOCR GPU（`onnxruntime-gpu`）与 PaddleOCR GPU（`paddlepaddle-gpu`）两种补丁。
+  - 设置界面 GPU 开关对 RapidOCR / PaddleOCR 均可用。
+- **默认 OCR 引擎改为 `rapid`**：模型内置，首次启动无需下载。
+- **新增打包脚本**：`scripts/build_release.py` 一键构建并压缩发行包。
+- **新增文档**：`docs/GPU_PATCH.md` 说明 GPU 补丁安装方法。
 - 修复 `ResultReader` 线程在停止时可能阻塞的问题。
 
 ### v0.0.1

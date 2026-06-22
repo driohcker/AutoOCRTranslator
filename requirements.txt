@@ -11,10 +11,11 @@ pywin32>=306
 PyQt6>=6.6.0
 
 # OCR
-paddlepaddle>=3.0.0  # CPU 版，默认使用
-paddleocr>=3.0.0
-rapidocr-onnxruntime>=1.2.0  # 更快的 CPU OCR 引擎，默认使用
-# 如需启用 GPU 加速，请参考 requirements-gpu.txt
+# 开发环境可选安装 PaddleOCR（体积大）：
+#   pip install paddlepaddle>=3.0.0 paddleocr>=3.0.0
+# 基础包默认仅打包 RapidOCR，因此生产包体积小。
+rapidocr-onnxruntime>=1.2.0
+onnxruntime==1.20.1  # 与 onnxruntime-gpu 1.20.1 保持版本一致，便于 GPU 补丁升级
 
 # 翻译 API 支持
 requests>=2.31.0
