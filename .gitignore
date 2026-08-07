@@ -49,3 +49,10 @@ tests/*.png
 tests/*.jpg
 tests/edge_test_output/
 .pytest_cache/
+
+# Agent缓存
+.playwright-mcp/
+
+# 临时调试产物
+*.png
+*.jpg
