@@ -11,6 +11,14 @@ import os
 import shutil
 from pathlib import Path
 
+# rapidocr-onnxruntime 1.2.3 的包结构：config.yaml + models/*.onnx +
+# ch_ppocr_v2_cls / ch_ppocr_v3_det / ch_ppocr_v3_rec 子模块目录都是运行时
+# 按路径引用的数据/代码，PyInstaller 自动收集会遗漏（只收 .py，漏 .yaml/.onnx）。
+# 这里把整个包目录作为 datas 收进来，保证冻结环境可完整加载。
+import rapidocr_onnxruntime as _rapidocr_pkg
+
+_RAPIDOCR_SRC = str(Path(_rapidocr_pkg.__file__).resolve().parent)
+
 
 block_cipher = None
 
@@ -19,8 +27,16 @@ a = Analysis(
     ['run.py'],
     pathex=[],
     binaries=[],
-    datas=[('config', 'config'), ('assets', 'assets')],
-    hiddenimports=['src'],
+    datas=[
+        ('config', 'config'),
+        ('assets', 'assets'),
+        # rapidocr 全量数据（config.yaml、模型、子模块配置）约 14MB
+        (_RAPIDOCR_SRC, 'rapidocr_onnxruntime'),
+    ],
+    # rapidocr-onnxruntime 1.2.3 的 det/rec 子模块运行时动态 import
+    # pyclipper / six / shapely（utils.py 等），静态分析追踪不到，
+    # 必须显式声明，否则冻结环境报 ModuleNotFoundError。
+    hiddenimports=['src', 'pyclipper', 'six', 'shapely'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -46,8 +62,12 @@ a = Analysis(
         'paddlex',
         'paddlepaddle',
     ],
+    # 注意：不能使用 optimize=2（字节码优化会剥离 docstring）。
+    # numpy 2.3 的 _core/overrides.py 在模块导入时调用
+    # add_docstring(implementation, dispatcher.__doc__)，docstring 为 None 会
+    # 直接 TypeError 崩溃（"argument docstring of add_docstring should be a str"）。
     noarchive=False,
-    optimize=2,
+    optimize=0,
 )
 pyz = PYZ(a.pure, cipher=block_cipher)
 
