@@ -10,9 +10,9 @@
 
 ## ✨ 功能特性
 
-- **实时窗口捕获**：选择任意可见窗口，定时截取画面。
+- **实时窗口捕获**：选择任意可见窗口，定时截取画面（默认 300ms，配合变化检测实际资源占用极低）。
 - **多引擎 OCR**：支持 PaddleOCR 与 RapidOCR，可识别日文、简体中文、繁体中文、英文等。
-- **多源翻译**：内置 Google 翻译免费接口，并支持 DeepL、腾讯云、阿里云等商业 API。
+- **异步翻译管道**：OCR 与联网翻译彻底解耦——本地识别永不等待网络，译文异步回填（先出原文、后补译文）。
 - **SQLite 缓存**：自动缓存翻译结果，避免重复请求，节省 API 额度与时间。
 - **置顶覆盖层**：以半透明窗口将译文显示在原文字位置，不影响操作。
 - **自定义翻译区域**：可手动划分多个 ROI 区域，只翻译关注区域。
@@ -92,7 +92,7 @@ python run.py
 
 1. 运行后会弹出**主窗口**，同时系统托盘会显示 **AutoOCRTranslator** 图标（若系统托盘不可用，则以纯窗口模式运行）。
 2. 在主窗口点击"选择窗口"，选择要翻译的游戏/应用窗口。
-3. 点击"开始翻译"后进入循环：**截图 → OCR → 查缓存/翻译 → 显示覆盖层**。
+3. 点击"开始翻译"后进入循环：**截图 → 变化检测 → OCR → 显示原文/缓存译文 → 异步翻译回填译文**。
 4. 在设置窗口的 **OCR 区域预设** 中可选择：
    - **字幕/对话**、**底部全宽**、**全屏**：使用固定区域。
    - **自定义**：手动输入 `[x, y, w, h]` 单个区域。
@@ -112,9 +112,11 @@ python run.py
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
 | `app.name` | 应用名称 | `AutoOCRTranslator` |
-| `app.version` | 应用版本 | `0.0.3` |
-| `capture.interval_ms` | 截图间隔（毫秒） | `3000` |
+| `app.version` | 应用版本 | `0.0.4` |
+| `capture.interval_ms` | 识别间隔（毫秒） | `300` |
 | `capture.target_window_title` | 目标窗口标题（可选） | `''` |
+| `capture.change_detection` | 画面无变化时跳过 OCR（dHash） | `true` |
+| `capture.change_threshold` | 变化检测灵敏度（汉明距离阈值） | `4` |
 | `ocr.engine` | OCR 引擎：`rapid` / `paddle` | `rapid` |
 | `ocr.lang` | OCR 语言：`japan` / `ch` / `ch_tra` / `en` | `japan` |
 | `ocr.use_gpu` | 是否使用 GPU | `false` |
@@ -128,6 +130,9 @@ python run.py
 | `translate.api_key` | API Key / SecretId / AccessKey ID | `''` |
 | `translate.api_secret` | API Secret / SecretKey / AccessKey Secret | `''` |
 | `translate.proxy` | 代理地址 | `''` |
+| `translate.timeout` | 翻译请求超时（秒） | `5` |
+| `translate.max_retries` | 每个接口最大重试次数 | `1` |
+| `translate.concurrency` | 翻译并发线程数（子进程内） | `2` |
 | `translate.filter_source_lang` | 是否按源语言过滤 | `true` |
 | `translate.strict_source_lang` | 严格过滤，日文只翻译含假名文本 | `true` |
 | `cache.enabled` | 是否启用缓存 | `true` |
@@ -252,7 +257,9 @@ AutoOCRTranslator\upgrade_to_gpu.py
 
 ## ⚠️ 已知问题与性能提示
 
-- **OCR 性能**：默认 RapidOCR CPU 引擎速度较快；若仍不够，可安装 GPU 补丁。
+- **识别频率**：默认 300ms 一帧；画面无变化时自动跳过 OCR（dHash 变化检测），静止画面几乎零负载。
+  - 识别循环与翻译完全解耦：翻译慢/失败不影响识别频率，未命中缓存的文本先显示原文，译文随后异步回填。
+- **OCR 性能**：默认 RapidOCR CPU 引擎在 1080p 下单帧约 300-800ms；安装 GPU 补丁后降至 30-60ms。
   - 建议将游戏/应用设为窗口化或较低分辨率。
   - 可通过 `ocr.roi_preset` 只翻译关注区域，显著提升速度。
 - **翻译质量**：默认使用 Google Translate 免费接口，可能存在不稳定或翻译不准确的情况。
@@ -271,6 +278,21 @@ AutoOCRTranslator\upgrade_to_gpu.py
 ---
 
 ## 📝 更新日志
+
+### v0.0.4
+
+- **异步翻译管道重构**（借鉴 BetterGI 架构）：OCR 与联网翻译彻底解耦。
+  - OCR 从翻译子进程移至主进程截图线程，识别循环永不等待网络。
+  - 翻译子进程纯化为「查缓存 + 批量翻译」，内置 2 线程并发池。
+  - 先显示原文/缓存译文，未命中文本异步提交翻译，译文返回后按文本合并回填。
+  - 慢结果返回时画面已更新则丢弃（epoch 机制），避免旧译文错位。
+- **画面变化检测**：对每个 ROI 区域做 dHash 感知哈希，画面无变化时跳过 OCR（默认阈值 4，可配置）。静止画面下资源占用趋近于零。
+- **识别频率提升**：默认间隔从 3000ms 降至 300ms；识别慢于间隔时自动追帧（跳过睡眠）。
+- **翻译调优**：超时默认 10s→5s、重试默认 2→1 次、并发 2 线程。
+- **SQLite WAL 模式**：支持主进程读 + 子进程写跨进程并发访问缓存。
+- **截图改用 pywin32 原生 BitBlt**：修复 mss 在打包环境下的截图噪声问题。
+- **打包修复**：freeze_support（重复界面）、optimize=0（numpy 崩溃）、rapidocr 数据与动态依赖收集、onnxruntime 冻结环境死锁。
+- **图像不再跨进程传输**：任务只传纯文本，去掉 PNG/tobytes 往返开销。
 
 ### v0.0.3
 
