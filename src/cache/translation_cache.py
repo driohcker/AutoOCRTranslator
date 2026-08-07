@@ -30,9 +30,15 @@ class TranslationCache:
 
     @contextmanager
     def _connect(self):
-        """创建并管理 SQLite 连接上下文，确保连接正确关闭."""
+        """创建并管理 SQLite 连接上下文，确保连接正确关闭.
+
+        启用 WAL 日志模式 + busy_timeout，支持主进程（读）与
+        翻译子进程（读写）跨进程并发访问同一数据库。
+        """
         conn = sqlite3.connect(self.db_path)
         try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
             yield conn
         finally:
             conn.close()

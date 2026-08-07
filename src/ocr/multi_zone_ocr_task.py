@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from PIL import Image
 from PyQt6.QtCore import QObject, QRunnable, pyqtSignal
 
-from src.ocr.ocr_task import run_ocr_pipeline
+from src.ocr.ocr_task import run_ocr_flow
 
 if TYPE_CHECKING:
     from src.cache.translation_cache import TranslationCache
@@ -78,11 +78,10 @@ class MultiZoneOCRTask(QRunnable):
             for idx, (image, offset, scale_ratio) in enumerate(self.zones):
                 logger.info(f"处理区域 {idx + 1}/{len(self.zones)}")
                 self.signals.debug_image.emit(image)
-                items = run_ocr_pipeline(
+                items = run_ocr_flow(
                     image=image,
                     scale_ratio=scale_ratio,
                     ocr_engine=self.ocr_engine,
-                    translator=self.translator,
                     cache=self.cache,
                     source_lang=self.source_lang,
                     target_lang=self.target_lang,

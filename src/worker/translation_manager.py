@@ -1,16 +1,15 @@
 """翻译子进程管理器.
 
-负责在主进程中维护一个独立的 OCR/翻译子进程，并通过 Qt 信号把结果发回 UI 线程。
+负责在主进程中维护一个独立的翻译子进程，并通过 Qt 信号把结果发回 UI 线程。
+OCR 已在主进程的 CaptureThread 中完成，这里只负责「纯文本翻译」任务的收发。
 """
 
-import io
 import logging
 import multiprocessing
 import queue
 import threading
 from typing import Any, Dict, Optional
 
-from PIL import Image
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
 from src.worker.translation_worker import run_translation_worker
@@ -58,15 +57,17 @@ class ResultReader(QThread):
 class TranslationProcessManager(QObject):
     """管理翻译子进程的生命周期与任务提交.
 
+    只处理纯文本翻译：OCR 结果（已识别文本 + epoch）经 submit_translation_job
+    提交，译文经 translation_finished 信号返回；epoch 用于丢弃过期结果。
+
     Signals:
-        finished(items, elapsed): 翻译成功完成。
-        error(message): 翻译过程中发生错误。
-        debug_image(images): 用于主窗口预览的 PIL 图像列表。
+        translation_finished(result): 翻译完成，result 为 {"job_id", "epoch",
+            "translations": [{"id", "translated"}], "elapsed", "status"}。
+        error(message): 子进程错误。
     """
 
-    finished = pyqtSignal(list, float)
+    translation_finished = pyqtSignal(dict)
     error = pyqtSignal(str)
-    debug_image = pyqtSignal(object)
 
     def __init__(self, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
@@ -76,7 +77,6 @@ class TranslationProcessManager(QObject):
         self._reader: Optional[ResultReader] = None
 
         self._lock = threading.Lock()
-        self._pending_count = 0
         self._job_counter = 0
 
     def start(self, config_dict: Dict[str, Any]) -> None:
@@ -141,73 +141,56 @@ class TranslationProcessManager(QObject):
         self._process = None
         self._input_queue = None
         self._output_queue = None
-        with self._lock:
-            self._pending_count = 0
 
         logger.info("翻译子进程已停止")
 
-    def submit_job(self, job_dict: Dict[str, Any]) -> int:
-        """向子进程提交一个翻译任务.
+    def submit_translation_job(
+        self,
+        epoch: int,
+        items: list,
+        source_lang: str,
+        target_lang: str,
+    ) -> int:
+        """向子进程提交一个纯文本翻译任务.
 
         Args:
-            job_dict: 任务数据字典，不需要包含 job_id。
+            epoch: OCR 循环代数，用于丢弃过期结果（慢结果返回时画面已变）。
+            items: 待翻译项列表，每项 {"id": int, "text": str}。
+            source_lang: 源语言。
+            target_lang: 目标语言。
 
         Returns:
-            分配的任务 ID。
+            分配的任务 ID（-1 表示提交失败）。
         """
         with self._lock:
-            self._pending_count += 1
             self._job_counter += 1
             job_id = self._job_counter
 
-        job_dict = dict(job_dict)
-        job_dict["job_id"] = job_id
+        job_dict = {
+            "job_id": job_id,
+            "epoch": epoch,
+            "items": items,
+            "source_lang": source_lang,
+            "target_lang": target_lang,
+        }
 
         if self._input_queue is not None:
             try:
                 self._input_queue.put(job_dict, timeout=1.0)
+                return job_id
             except Exception as e:
                 logger.error(f"提交翻译任务失败: {e}")
-                with self._lock:
-                    self._pending_count = max(0, self._pending_count - 1)
+                return -1
         else:
             logger.error("翻译子进程未启动，无法提交任务")
-
-        return job_id
-
-    def is_busy(self) -> bool:
-        """当前是否有未完成的翻译任务."""
-        with self._lock:
-            return self._pending_count > 0
-
-    def pending_count(self) -> int:
-        """未完成任务数量."""
-        with self._lock:
-            return self._pending_count
+            return -1
 
     def _on_result_received(self, result: Dict[str, Any]) -> None:
         """处理从子进程返回的结果."""
-        with self._lock:
-            self._pending_count = max(0, self._pending_count - 1)
-
         status = result.get("status")
         if status == "error":
             self.error.emit(result.get("error", "未知错误"))
         elif status == "finished":
-            self.finished.emit(
-                result.get("items", []), result.get("elapsed", 0.0)
-            )
-            debug_bytes = result.get("debug_image_bytes")
-            if debug_bytes:
-                try:
-                    if isinstance(debug_bytes, list):
-                        images = [
-                            Image.open(io.BytesIO(b)) for b in debug_bytes
-                        ]
-                    else:
-                        images = [Image.open(io.BytesIO(debug_bytes))]
-                    self.debug_image.emit(images)
-                except Exception:
-                    logger.exception("解码调试图像失败")
+            self.translation_finished.emit(result)
         else:
             logger.warning(f"收到未知状态的结果: {status}")

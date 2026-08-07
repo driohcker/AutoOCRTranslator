@@ -1,10 +1,10 @@
 # 基础
 PyYAML>=6.0.2
 Pillow>=10.0.0
-numpy>=1.26.0
+numpy>=1.26.0,<2.4
 
 # 窗口捕获与系统交互
-mss>=9.0.0
+# 截图使用 pywin32 原生 BitBlt；mss 10.2 在 PyInstaller 冻结环境有 DIB 噪声问题
 pywin32>=306
 
 # GUI 与覆盖层
@@ -15,6 +15,9 @@ PyQt6>=6.6.0
 #   pip install paddlepaddle>=3.0.0 paddleocr>=3.0.0
 # 基础包默认仅打包 RapidOCR，因此生产包体积小。
 rapidocr-onnxruntime>=1.2.0
+pyclipper>=1.4.0  # rapidocr 1.2.3 det 模块运行时动态依赖
+six>=1.16.0  # rapidocr 1.2.3 det/rec 模块运行时动态依赖
+shapely>=2.0.0  # rapidocr 1.2.3 det 模块运行时动态依赖（可选后处理）
 onnxruntime==1.20.1  # 与 onnxruntime-gpu 1.20.1 保持版本一致，便于 GPU 补丁升级
 
 # 翻译 API 支持

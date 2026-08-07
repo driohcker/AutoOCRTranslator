@@ -102,7 +102,16 @@ def create_translator(translate_config: Dict[str, Any]) -> "Translator":
     api_key = translate_config.get("api_key", "")
     api_secret = translate_config.get("api_secret", "")
 
-    provider_kwargs: Dict[str, Any] = {"proxy": proxy}
+    provider_kwargs: Dict[str, Any] = {
+        "proxy": proxy,
+        # 超时由配置控制（settings.yaml translate.timeout）
+        "timeout": int(translate_config.get("timeout", 5)),
+    }
+    if provider == "google_free":
+        # 仅 google_free 支持重试次数配置
+        provider_kwargs["max_retries"] = int(
+            translate_config.get("max_retries", 1)
+        )
     if provider == "tencent":
         provider_kwargs["secret_id"] = api_key
         provider_kwargs["secret_key"] = api_secret

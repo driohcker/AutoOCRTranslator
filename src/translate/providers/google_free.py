@@ -26,15 +26,15 @@ class GoogleFreeProvider(TranslationProvider):
 
     def __init__(
         self,
-        timeout: int = 10,
-        max_retries: int = 2,
+        timeout: int = 5,
+        max_retries: int = 1,
         proxy: Optional[str] = None,
     ):
         """初始化.
 
         Args:
-            timeout: HTTP 请求超时时间（秒）. 默认 10。
-            max_retries: 每个 endpoint 最大重试次数。默认 2。
+            timeout: HTTP 请求超时时间（秒）. 默认 5。
+            max_retries: 每个 endpoint 最大重试次数。默认 1。
             proxy: HTTP/HTTPS 代理地址，如 http://127.0.0.1:7890。
         """
         self.timeout = timeout

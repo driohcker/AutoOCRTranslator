@@ -1,14 +1,17 @@
 """窗口捕获模块.
 
-提供 Windows 窗口枚举、选择、客户区截图功能.
+提供 Windows 窗口枚举、选择、客户区截图功能。
+截图使用 pywin32 原生 BitBlt（GetWindowDC + CreateDIBSection），
+避免 mss 在 PyInstaller 冻结环境下的 DIB 内存读取噪声问题。
 """
 
 import logging
 from typing import List, Optional, Tuple
 
-import mss
-from PIL import Image
 import win32gui
+import win32ui
+import win32con
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -31,14 +34,6 @@ class WindowCapture:
 
     def __init__(self):
         self._hwnd: Optional[int] = None
-        self._sct = mss.MSS()
-
-    def __del__(self):
-        """释放 mss 资源."""
-        try:
-            self._sct.close()
-        except Exception:
-            pass
 
     @staticmethod
     def list_windows(
@@ -145,20 +140,49 @@ class WindowCapture:
             return None
 
         try:
-            monitor = {
-                "left": left,
-                "top": top,
-                "width": width,
-                "height": height,
-            }
-            sct_img = self._sct.grab(monitor)
-            img = Image.frombytes(
-                "RGB", sct_img.size, sct_img.bgra, "raw", "BGRX"
-            )
-            return img
+            return self._bitblt_capture(left, top, width, height)
         except Exception as e:
             logger.warning(f"截图失败: {e}")
             return None
+
+    @staticmethod
+    def _bitblt_capture(
+        left: int, top: int, width: int, height: int
+    ) -> Image.Image:
+        """用 pywin32 原生 BitBlt 截取屏幕区域.
+
+        从屏幕 DC 直接拷贝像素到内存 DIB，与 mss 相比在 PyInstaller
+        冻结环境下更稳定（mss 10.2 的 CreateDIBSection 实现打包后有
+        内存读取噪声问题）。
+        """
+        # 屏幕 DC（目标窗口可能被其他窗口遮挡，屏幕 DC 能截到当前可见画面）
+        screen_dc_handle = win32gui.GetDC(0)
+        mem_dc = None
+        bmp = None
+        try:
+            screen_dc = win32ui.CreateDCFromHandle(screen_dc_handle)
+            mem_dc = screen_dc.CreateCompatibleDC()
+            bmp = win32ui.CreateBitmap()
+            bmp.CreateCompatibleBitmap(screen_dc, width, height)
+            mem_dc.SelectObject(bmp)
+            mem_dc.BitBlt((0, 0), (width, height), screen_dc, (left, top), win32con.SRCCOPY)
+            info = bmp.GetInfo()
+            bits = bmp.GetBitmapBits(True)
+            return Image.frombuffer(
+                "RGB",
+                (info["bmWidth"], info["bmHeight"]),
+                bits,
+                "raw",
+                "BGRX",
+                0,
+                1,
+            )
+        finally:
+            if bmp is not None:
+                win32gui.DeleteObject(bmp.GetHandle())
+            if mem_dc is not None:
+                mem_dc.DeleteDC()
+            win32gui.ReleaseDC(0, screen_dc_handle)
 
 
 def select_window_dialog(

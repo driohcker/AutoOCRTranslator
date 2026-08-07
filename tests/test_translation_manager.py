@@ -49,12 +49,13 @@ class TestTranslationProcessManager(unittest.TestCase):
         mock_process.join.assert_not_called()
         mock_process.terminate.assert_not_called()
         self.assertIsNone(manager._process)
-        self.assertEqual(manager.pending_count(), 0)
 
     @patch("src.worker.translation_manager.multiprocessing.Queue", side_effect=queue_module.Queue)
     @patch("src.worker.translation_manager.multiprocessing.Process")
-    def test_submit_job_and_receive_result(self, mock_process_cls, _mock_queue):
-        """测试提交任务后能从输出队列收到 finished 信号."""
+    def test_submit_translation_job_and_receive_result(
+        self, mock_process_cls, _mock_queue
+    ):
+        """测试提交任务后能从输出队列收到 translation_finished 信号."""
         mock_process = mock_process_cls.return_value
         mock_process.is_alive.return_value = False
 
@@ -63,24 +64,24 @@ class TestTranslationProcessManager(unittest.TestCase):
         manager.start(config_dict)
 
         finished_args = []
-        manager.finished.connect(lambda items, elapsed: finished_args.append((items, elapsed)))
+        manager.translation_finished.connect(finished_args.append)
 
-        job = {"zones": [], "preset": "subtitle"}
-        manager.submit_job(job)
-        self.assertTrue(manager.is_busy())
-        self.assertEqual(manager.pending_count(), 1)
+        job_id = manager.submit_translation_job(
+            epoch=3,
+            items=[{"id": 0, "text": "hello"}],
+            source_lang="en",
+            target_lang="zh-CN",
+        )
+        self.assertGreater(job_id, 0)
 
         # 手动注入子进程结果
         manager._output_queue.put(
             {
                 "status": "finished",
-                "items": [
-                    {
-                        "original": "hello",
-                        "translated": "你好",
-                        "box": [],
-                        "score": 0.95,
-                    }
+                "job_id": job_id,
+                "epoch": 3,
+                "translations": [
+                    {"id": 0, "original": "hello", "translated": "你好"}
                 ],
                 "elapsed": 0.3,
             }
@@ -88,8 +89,9 @@ class TestTranslationProcessManager(unittest.TestCase):
         self._process_events(300)
 
         self.assertEqual(len(finished_args), 1)
-        self.assertEqual(len(finished_args[0][0]), 1)
-        self.assertFalse(manager.is_busy())
+        result = finished_args[0]
+        self.assertEqual(result["epoch"], 3)
+        self.assertEqual(len(result["translations"]), 1)
 
         manager.stop()
 
@@ -106,12 +108,16 @@ class TestTranslationProcessManager(unittest.TestCase):
         error_messages = []
         manager.error.connect(error_messages.append)
 
-        manager.submit_job({"zones": [], "preset": "subtitle"})
+        manager.submit_translation_job(
+            epoch=1,
+            items=[{"id": 0, "text": "hello"}],
+            source_lang="en",
+            target_lang="zh-CN",
+        )
         manager._output_queue.put({"status": "error", "error": "网络超时"})
         self._process_events(300)
 
         self.assertEqual(error_messages, ["网络超时"])
-        self.assertFalse(manager.is_busy())
 
         manager.stop()
 

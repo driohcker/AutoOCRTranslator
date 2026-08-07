@@ -48,6 +48,10 @@ class App:
 
         self.is_running = False
 
+        # 本地 OCR 状态：epoch 用于丢弃过期的异步译文
+        self._current_epoch = 0
+        self._current_items: List[Dict[str, Any]] = []
+
         # 悬浮日志窗口
         self.log_overlay: Optional[Any] = None
         self._log_overlay_handler: Optional[Any] = None
@@ -181,22 +185,27 @@ class App:
             "use_gpu": config_dict.get("ocr", {}).get("use_gpu", False),
         }
 
-        # 启动截图线程
+        # 启动截图线程（主进程内完成本地 OCR + 变化检测）
         self.capture_thread = CaptureThread(
             hwnd=hwnd,
             manager=self.translation_manager,
             interval_ms=interval,
+            cache=self.cache,
+            change_detection=config.get("capture.change_detection", True),
+            change_threshold=config.get("capture.change_threshold", 4),
         )
         self.capture_thread.frame_captured.connect(self._on_ocr_debug_image)
         self.capture_thread.frame_skipped.connect(self._on_frame_skipped)
+        self.capture_thread.ocr_ready.connect(self._on_ocr_ready)
         self.capture_thread.window_invalid.connect(self._on_capture_window_invalid)
         self.capture_thread.finished.connect(self._on_capture_thread_finished)
         self.capture_thread.start()
 
-        # 连接子进程结果信号
-        self.translation_manager.finished.connect(self._on_ocr_finished)
+        # 连接翻译子进程结果信号（译文异步回填）
+        self.translation_manager.translation_finished.connect(
+            self._on_translation_finished
+        )
         self.translation_manager.error.connect(self._on_ocr_error)
-        self.translation_manager.debug_image.connect(self._on_ocr_debug_image)
 
         self.is_running = True
         self.overlay.show()
@@ -304,29 +313,73 @@ class App:
         logger.info("截图线程已结束")
         self.capture_thread = None
 
-    def _on_ocr_finished(
-        self, translation_items: List[Dict[str, Any]], elapsed: float
+    def _on_ocr_ready(
+        self, epoch: int, items: List[Dict[str, Any]], elapsed: float
     ) -> None:
-        """翻译子进程完成回调（主线程）."""
+        """本地 OCR 完成回调（主线程）：立即显示原文与缓存译文.
+
+        未命中的译文由 _on_translation_finished 异步回填；本回调不等待网络。
+        """
         if not self.is_running:
             return
 
+        self._current_epoch = epoch
+        self._current_items = items
         logger.info(
-            f"OCR 任务完成，识别到 {len(translation_items)} 个文本块，"
-            f"耗时 {elapsed:.2f}s"
+            f"OCR 识别完成，识别到 {len(items)} 个文本块，耗时 {elapsed * 1000:.0f}ms"
         )
 
-        if translation_items:
-            self.overlay.update_translations(translation_items)
+        if items:
+            self.overlay.update_translations(items)
             if self.main_window is not None:
-                self.main_window.update_recent(translation_items)
+                self.main_window.update_recent(items)
         else:
-            logger.info("本帧未识别到文本，保留上一帧覆盖层")
+            logger.debug("本帧未识别到文本，保留上一帧覆盖层")
 
         if self.main_window is not None:
             self.main_window.update_stats()
             self.main_window.update_performance(elapsed, self._skipped_frames)
         self._skipped_frames = 0
+
+    def _on_translation_finished(self, result: Dict[str, Any]) -> None:
+        """翻译子进程译文回调（主线程）：把异步译文合并进当前显示.
+
+        慢结果返回时若画面已更新（epoch 过期）则丢弃，避免旧译文错位。
+        """
+        if not self.is_running:
+            return
+
+        epoch = result.get("epoch", -1)
+        translations = result.get("translations", [])
+
+        if epoch < self._current_epoch:
+            logger.debug(f"丢弃过期译文（epoch {epoch} < 当前 {self._current_epoch}）")
+            return
+
+        if not translations or not self._current_items:
+            return
+
+        # 按 original 文本合并译文（同一文本按出现顺序匹配）
+        by_text: Dict[str, list] = {}
+        for t in translations:
+            text = t.get("translated", "")
+            if text:
+                by_text.setdefault(t.get("original", ""), []).append(text)
+
+        merged = []
+        consumed: Dict[str, int] = {}
+        for item in self._current_items:
+            new_item = dict(item)
+            original = item.get("original", "")
+            pool = by_text.get(original, [])
+            if pool:
+                idx = consumed.get(original, 0)
+                if idx < len(pool):
+                    new_item["translated"] = pool[idx]
+                    consumed[original] = idx + 1
+            merged.append(new_item)
+
+        self.overlay.update_translations(merged)
 
     def _on_ocr_debug_image(self, images: Any) -> None:
         """OCR 调试图像回调（主线程）：把当前识别批次对应的截图显示到主窗口."""

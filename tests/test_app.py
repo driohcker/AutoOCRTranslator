@@ -9,7 +9,7 @@ from PyQt6.QtCore import QEventLoop, QTimer
 from PyQt6.QtWidgets import QApplication
 
 from src.app import App
-from src.ocr.ocr_task import run_ocr_pipeline
+from src.ocr.ocr_task import run_ocr_flow
 
 
 def _ensure_app():
@@ -39,9 +39,8 @@ class TestApp(unittest.TestCase):
         mock_cache_cls.assert_called_once()
 
     def test_ocr_pipeline_with_cache_hit(self) -> None:
-        """测试 OCR 处理流程：OCR → 缓存命中 → 返回翻译项."""
+        """测试 OCR 处理流程：OCR → 缓存命中 → 返回翻译项（不联网）."""
         ocr_engine = MagicMock()
-        translator = MagicMock()
         cache = MagicMock()
 
         ocr_engine.recognize = MagicMock(
@@ -53,27 +52,23 @@ class TestApp(unittest.TestCase):
                 }
             ]
         )
-        translator.translate = MagicMock(return_value="你好")
         cache.get = MagicMock(return_value="你好")  # 缓存命中
-        cache.set = MagicMock()
 
         image = Image.new("RGB", (100, 100))
-        items = run_ocr_pipeline(
-            image, 1.0, ocr_engine, translator, cache, "ja", "zh-CN"
+        items = run_ocr_flow(
+            image, 1.0, ocr_engine, cache, "ja", "zh-CN"
         )
 
         ocr_engine.recognize.assert_called_once_with(image)
         cache.get.assert_called_once_with("こんにちは", "ja", "zh-CN")
-        translator.translate.assert_not_called()  # 命中缓存不应调用翻译
 
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["translated"], "你好")
         self.assertEqual(items[0]["original"], "こんにちは")
 
     def test_ocr_pipeline_with_cache_miss(self) -> None:
-        """测试 OCR 处理流程：OCR → 缓存未命中 → 翻译 → 写入缓存."""
+        """测试 OCR 处理流程：OCR → 缓存未命中 → translated 为 None（翻译异步）."""
         ocr_engine = MagicMock()
-        translator = MagicMock()
         cache = MagicMock()
 
         ocr_engine.recognize = MagicMock(
@@ -85,20 +80,17 @@ class TestApp(unittest.TestCase):
                 }
             ]
         )
-        translator.translate = MagicMock(return_value="你好")
         cache.get = MagicMock(return_value=None)  # 缓存未命中
-        cache.set = MagicMock()
 
         image = Image.new("RGB", (100, 100))
-        items = run_ocr_pipeline(
-            image, 1.0, ocr_engine, translator, cache, "ja", "zh-CN"
+        items = run_ocr_flow(
+            image, 1.0, ocr_engine, cache, "ja", "zh-CN"
         )
 
-        translator.translate.assert_called_once_with("こんにちは", "ja", "zh-CN")
-        cache.set.assert_called_once_with("こんにちは", "ja", "zh-CN", "你好")
+        cache.set.assert_not_called()  # 翻译已异步化，本地流程不写缓存
 
         self.assertEqual(len(items), 1)
-        self.assertEqual(items[0]["translated"], "你好")
+        self.assertIsNone(items[0]["translated"])  # 等待异步译文回填
 
     @patch("src.app.TranslationCache")
     @patch("src.app.TranslationProcessManager")
@@ -181,10 +173,12 @@ class TestApp(unittest.TestCase):
 
         app.start()
 
-        # 模拟子进程返回结果
+        # 模拟本地 OCR 完成：先立即显示原文 + 缓存译文
         manager = mock_manager_cls.return_value
-        finish_slot = manager.finished.connect.call_args[0][0]
-        finish_slot(
+        capture_thread = mock_capture_thread_cls.return_value
+        ocr_ready_slot = capture_thread.ocr_ready.connect.call_args[0][0]
+        ocr_ready_slot(
+            1,
             [
                 {
                     "original": "こんにちは",
@@ -193,12 +187,60 @@ class TestApp(unittest.TestCase):
                     "score": 0.95,
                 }
             ],
-            0.5,
+            0.15,
         )
 
         app.overlay.update_translations.assert_called_once()
         app.main_window.update_recent.assert_called_once()
         app.main_window.update_performance.assert_called_once()
+
+        # 模拟翻译子进程异步返回译文 → 按文本合并回填
+        app.overlay.update_translations.reset_mock()
+        translation_slot = manager.translation_finished.connect.call_args[0][0]
+        translation_slot(
+            {
+                "status": "finished",
+                "epoch": 1,
+                "translations": [
+                    {"id": 0, "original": "こんにちは", "translated": "你好"}
+                ],
+                "elapsed": 0.3,
+            }
+        )
+        merged = app.overlay.update_translations.call_args[0][0]
+        self.assertEqual(merged[0]["translated"], "你好")
+
+    def test_translation_stale_result_dropped(self) -> None:
+        """测试过期译文（epoch 小于当前）会被丢弃."""
+        app = App()
+        app.init()
+        app.is_running = True
+
+        # 当前画面已是 epoch=2
+        app._current_epoch = 2
+        app._current_items = [
+            {
+                "original": "こんにちは",
+                "translated": None,
+                "box": [(10, 10), (100, 10), (100, 40), (10, 40)],
+                "score": 0.95,
+            }
+        ]
+        app.overlay.update_translations = MagicMock()
+
+        # 返回 epoch=1 的旧译文
+        app._on_translation_finished(
+            {
+                "status": "finished",
+                "epoch": 1,
+                "translations": [
+                    {"id": 0, "original": "こんにちは", "translated": "你好"}
+                ],
+                "elapsed": 0.3,
+            }
+        )
+
+        app.overlay.update_translations.assert_not_called()
 
     def _process_events(self, timeout_ms: int = 100) -> None:
         """处理当前线程的 Qt 事件，直到超时或队列为空."""

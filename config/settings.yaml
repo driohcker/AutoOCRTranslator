@@ -1,9 +1,11 @@
 app:
   name: AutoOCRTranslator
-  version: 0.0.3
+  version: 0.0.4
 capture:
-  interval_ms: 3000
+  interval_ms: 300
   target_window_title: ''
+  change_detection: true
+  change_threshold: 4
 ocr:
   engine: rapid
   lang: japan
@@ -31,6 +33,9 @@ translate:
   api_key: ''
   api_secret: ''
   proxy: ''
+  timeout: 5
+  max_retries: 1
+  concurrency: 2
   filter_source_lang: true
   strict_source_lang: true
 cache:
